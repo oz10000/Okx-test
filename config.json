@@ -1,0 +1,12 @@
+{
+  "exchange": "okx",
+  "testnet": true,
+  "symbol": "BTC/USDT:USDT",
+  "timeframe": "1m",
+  "artifacts_dir": "artifacts",
+  "loop_seconds": 15,
+  "max_iterations": 20,
+  "order_size_usdt": 10,
+  "slippage_bps": 2,
+  "latency_warning_ms": 500
+}
