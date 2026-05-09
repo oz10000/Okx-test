@@ -9,6 +9,12 @@ import ccxt
 import pandas as pd
 
 # ============================================================
+# STARTUP DEBUG (CRÍTICO EN GITHUB ACTIONS)
+# ============================================================
+
+print("SCRIPT STARTED")
+
+# ============================================================
 # CONFIG
 # ============================================================
 
@@ -18,33 +24,20 @@ with open("config.json", "r") as f:
 ARTIFACTS = Path(CONFIG["artifacts_dir"])
 ARTIFACTS.mkdir(exist_ok=True)
 
-# ============================================================
-# HELPERS
-# ============================================================
-
-def utc_now():
+def now():
     return datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
-
-def print_header():
-    print("=" * 70)
-    print("OKX TESTNET GITHUB LAB")
-    print("=" * 70)
-    print(f"UTC START : {utc_now()}")
-    print(f"SYMBOL    : {CONFIG['symbol']}")
-    print(f"TESTNET   : {CONFIG['testnet']}")
-    print("=" * 70)
-    print()
-
-
 # ============================================================
-# OKX CONNECTION
+# OKX EXCHANGE (ROBUSTO)
 # ============================================================
+
+print("INIT OKX")
 
 exchange = ccxt.okx({
     "apiKey": os.getenv("OKX_API_KEY"),
     "secret": os.getenv("OKX_SECRET"),
     "enableRateLimit": True,
+    "timeout": 15000,   # 🔴 CLAVE PARA EVITAR FREEZE
     "options": {
         "defaultType": "swap"
     }
@@ -55,70 +48,63 @@ exchange.set_sandbox_mode(True)
 symbol = CONFIG["symbol"]
 
 # ============================================================
-# STORAGE
+# DATA STORAGE
 # ============================================================
 
 latency_rows = []
 market_rows = []
 fill_rows = []
-system_rows = []
+error_rows = []
 
 # ============================================================
 # MAIN LOOP
 # ============================================================
 
-print_header()
+print("ENTER LOOP")
 
-for iteration in range(CONFIG["max_iterations"]):
+for i in range(CONFIG["max_iterations"]):
 
-    print(f"LOOP {iteration + 1}/{CONFIG['max_iterations']}")
+    print(f"LOOP {i+1}/{CONFIG['max_iterations']}")
 
     loop_start = time.time()
 
     # ========================================================
-    # FETCH MARKET DATA
+    # FETCH MARKET (SAFE)
     # ========================================================
 
-    rest_t0 = time.time()
-
     try:
+        t0 = time.time()
+
         ticker = exchange.fetch_ticker(symbol)
 
-        rest_latency_ms = round(
-            (time.time() - rest_t0) * 1000,
-            2
-        )
+        latency_ms = round((time.time() - t0) * 1000, 2)
 
         bid = ticker["bid"]
         ask = ticker["ask"]
         last = ticker["last"]
 
-        spread_pct = round(
-            ((ask - bid) / last) * 100,
-            6
-        )
+        spread = round(((ask - bid) / last) * 100, 6)
+
+        latency_rows.append({
+            "time": now(),
+            "latency_ms": latency_ms
+        })
 
         market_rows.append({
-            "timestamp": utc_now(),
+            "time": now(),
             "bid": bid,
             "ask": ask,
             "last": last,
-            "spread_pct": spread_pct
-        })
-
-        latency_rows.append({
-            "timestamp": utc_now(),
-            "rest_latency_ms": rest_latency_ms
+            "spread_pct": spread
         })
 
     except Exception as e:
 
-        print(f"MARKET ERROR: {e}")
+        print("FETCH ERROR:", str(e))
 
-        system_rows.append({
-            "timestamp": utc_now(),
-            "type": "market_error",
-            "message": str(e)
+        error_rows.append({
+            "time": now(),
+            "error": str(e)
         })
 
         time.sleep(CONFIG["loop_seconds"])
@@ -130,123 +116,63 @@ for iteration in range(CONFIG["max_iterations"]):
 
     side = random.choice(["buy", "sell"])
 
-    simulated_slippage = random.uniform(
-        0,
-        CONFIG["slippage_bps"] / 10000
-    )
+    slip = random.uniform(0, CONFIG["slippage_bps"] / 10000)
 
     if side == "buy":
-        simulated_fill_price = ask * (1 + simulated_slippage)
-        expected_price = ask
+        fill = ask * (1 + slip)
+        expected = ask
     else:
-        simulated_fill_price = bid * (1 - simulated_slippage)
-        expected_price = bid
+        fill = bid * (1 - slip)
+        expected = bid
 
-    simulated_fill_latency_ms = round(
-        random.uniform(50, 300),
-        2
-    )
+    fill_latency = random.uniform(50, 300)
 
     fill_rows.append({
-        "timestamp": utc_now(),
+        "time": now(),
         "side": side,
-        "expected_price": expected_price,
-        "fill_price": simulated_fill_price,
-        "slippage_pct": simulated_slippage * 100,
-        "fill_latency_ms": simulated_fill_latency_ms
+        "expected": expected,
+        "fill": fill,
+        "slippage_pct": slip * 100,
+        "fill_latency_ms": fill_latency
     })
 
     # ========================================================
-    # SYSTEM METRICS
+    # TELEMETRY
     # ========================================================
 
-    loop_runtime_ms = round(
-        (time.time() - loop_start) * 1000,
-        2
-    )
+    print(f"LATENCY MS : {latency_ms}")
+    print(f"BID        : {bid}")
+    print(f"ASK        : {ask}")
+    print(f"SPREAD     : {spread}")
+    print(f"SIDE       : {side}")
+    print(f"FILL       : {round(fill, 2)}")
 
-    system_rows.append({
-        "timestamp": utc_now(),
-        "type": "loop",
-        "loop_runtime_ms": loop_runtime_ms
-    })
+    if latency_ms > CONFIG["latency_warning_ms"]:
+        print("WARNING: HIGH LATENCY")
 
-    # ========================================================
-    # ASCII TELEMETRY
-    # ========================================================
-
-    print("-" * 70)
-    print(f"UTC                 : {utc_now()}")
-    print(f"REST LATENCY        : {rest_latency_ms} ms")
-    print(f"BID                 : {bid}")
-    print(f"ASK                 : {ask}")
-    print(f"LAST                : {last}")
-    print(f"SPREAD              : {spread_pct}%")
-    print(f"SIDE                : {side.upper()}")
-    print(f"EXPECTED PRICE      : {round(expected_price, 2)}")
-    print(f"SIMULATED FILL      : {round(simulated_fill_price, 2)}")
-    print(f"SIM SLIPPAGE        : {round(simulated_slippage * 100, 5)}%")
-    print(f"FILL LATENCY        : {simulated_fill_latency_ms} ms")
-    print(f"LOOP RUNTIME        : {loop_runtime_ms} ms")
-
-    if rest_latency_ms > CONFIG["latency_warning_ms"]:
-        print("WARNING             : HIGH LATENCY")
-
-    print("-" * 70)
-    print()
+    loop_time = round((time.time() - loop_start) * 1000, 2)
+    print(f"LOOP TIME  : {loop_time} ms")
+    print("-" * 50)
 
     time.sleep(CONFIG["loop_seconds"])
 
 # ============================================================
-# SAVE ARTIFACTS
+# ARTIFACTS (SIEMPRE SE GENERAN)
 # ============================================================
 
-pd.DataFrame(latency_rows).to_csv(
-    ARTIFACTS / "latency.csv",
-    index=False
-)
-
-pd.DataFrame(market_rows).to_csv(
-    ARTIFACTS / "market.csv",
-    index=False
-)
-
-pd.DataFrame(fill_rows).to_csv(
-    ARTIFACTS / "fills.csv",
-    index=False
-)
-
-pd.DataFrame(system_rows).to_csv(
-    ARTIFACTS / "system.csv",
-    index=False
-)
-
-# ============================================================
-# SUMMARY
-# ============================================================
-
-avg_rest_latency = round(
-    pd.DataFrame(latency_rows)["rest_latency_ms"].mean(),
-    2
-)
-
-avg_fill_latency = round(
-    pd.DataFrame(fill_rows)["fill_latency_ms"].mean(),
-    2
-)
+pd.DataFrame(latency_rows).to_csv(ARTIFACTS / "latency.csv", index=False)
+pd.DataFrame(market_rows).to_csv(ARTIFACTS / "market.csv", index=False)
+pd.DataFrame(fill_rows).to_csv(ARTIFACTS / "fills.csv", index=False)
+pd.DataFrame(error_rows).to_csv(ARTIFACTS / "errors.csv", index=False)
 
 summary = {
-    "timestamp": utc_now(),
-    "exchange": "okx",
-    "testnet": True,
-    "symbol": symbol,
-    "iterations": CONFIG["max_iterations"],
-    "avg_rest_latency_ms": avg_rest_latency,
-    "avg_fill_latency_ms": avg_fill_latency,
-    "workflow_status": "success",
-    "artifact_status": "generated"
+    "time": now(),
+    "status": "completed",
+    "loops": CONFIG["max_iterations"],
+    "errors": len(error_rows)
 }
 
+import json
 with open(ARTIFACTS / "summary.json", "w") as f:
     json.dump(summary, f, indent=2)
 
@@ -254,12 +180,9 @@ with open(ARTIFACTS / "summary.json", "w") as f:
 # FINAL OUTPUT
 # ============================================================
 
-print()
-print("=" * 70)
+print("=" * 60)
 print("LAB COMPLETE")
-print("=" * 70)
-print(f"AVG REST LATENCY : {avg_rest_latency} ms")
-print(f"AVG FILL LATENCY : {avg_fill_latency} ms")
-print("ARTIFACTS        : GENERATED")
-print("WORKFLOW STATUS  : SUCCESS")
-print("=" * 70)
+print("=" * 60)
+print("ARTIFACTS GENERATED")
+print("STATUS: SUCCESS")
+print("=" * 60)
