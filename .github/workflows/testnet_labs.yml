@@ -3,31 +3,23 @@ name: okx-testnet-lab
 on:
   workflow_dispatch:
 
-  schedule:
-    - cron: '*/30 * * * *'
-
 jobs:
-
   lab:
-
     runs-on: ubuntu-latest
 
     steps:
-
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
-      - name: Install Dependencies
+      - name: Install
         run: |
-          python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run Testnet Lab
+      - name: Run Lab
         env:
           OKX_API_KEY: ${{ secrets.OKX_API_KEY }}
           OKX_SECRET: ${{ secrets.OKX_SECRET }}
@@ -37,5 +29,5 @@ jobs:
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: okx-testnet-artifacts
+          name: okx-lab
           path: artifacts/
