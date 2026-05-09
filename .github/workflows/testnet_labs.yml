@@ -1,7 +1,9 @@
 name: okx-testnet-lab
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:          # manual, se puede cambiar a schedule o push
+  # schedule:
+  #   - cron: '0 */6 * * *'   # cada 6 horas, ejemplo
 
 jobs:
   lab:
@@ -10,24 +12,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Python
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Install
+      - name: Install dependencies
         run: |
+          pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run Lab
+      - name: Run Lab (unbuffered)
         env:
           OKX_API_KEY: ${{ secrets.OKX_API_KEY }}
           OKX_SECRET: ${{ secrets.OKX_SECRET }}
+          OKX_PASSPHRASE: ${{ secrets.OKX_PASSPHRASE }}
         run: |
-          python main.py
+          python -u main.py
 
-      - name: Upload Artifacts
+      - name: Upload artifacts
+        if: always()            # subir incluso si falla
         uses: actions/upload-artifact@v4
         with:
-          name: okx-lab
+          name: okx-lab-results
           path: artifacts/
