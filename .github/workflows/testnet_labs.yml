@@ -2,14 +2,18 @@ name: okx-testnet-lab
 
 on:
   workflow_dispatch:
+
   schedule:
     - cron: '*/30 * * * *'
 
 jobs:
+
   lab:
+
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -27,7 +31,6 @@ jobs:
         env:
           OKX_API_KEY: ${{ secrets.OKX_API_KEY }}
           OKX_SECRET: ${{ secrets.OKX_SECRET }}
-          OKX_PASSPHRASE: ${{ secrets.OKX_PASSPHRASE }}
         run: |
           python main.py
 
